@@ -1,0 +1,139 @@
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+
+if game.GameId ~= 6035872082 then
+    return
+end
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local StarterGui = game:GetService("StarterGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LogService = game:GetService("LogService")
+local ScriptContext = game:GetService("ScriptContext")
+
+print("Rivals Anticheat Disabler - Delta Optimized")
+
+-- 성공 알림 함수
+local function SendSuccess()
+    StarterGui:SetCore("SendNotification", {
+        Title = "Rivals Anticheat Disabler",
+        Text = "✅ Anticheat Successfully Disabled!",
+        Duration = 8,
+        Icon = "rbxassetid://6031094678" -- 체크 아이콘
+    })
+end
+
+local function SendError(err)
+    StarterGui:SetCore("SendNotification", {
+        Title = "Rivals Anticheat Disabler",
+        Text = "❌ Error occurred. Check console.",
+        Duration = 8
+    })
+    warn("Rivals Anticheat Disabler failed: " .. tostring(err))
+end
+
+local success, err = pcall(function()
+    -- 필수 함수 체크
+    assert(getgc, "Executor missing getgc")
+    assert(hookfunction, "Executor missing hookfunction")
+    assert(newcclosure, "Executor missing newcclosure")
+    assert(getconnections, "Executor missing getconnections")
+    assert(debug and debug.info, "Executor missing debug.info")
+
+    -- 1. AnalyticsPipelineController 후킹 (가장 중요한 부분)
+    task.spawn(function()
+        local hooked = 0
+        local gc = getgc(true)
+        
+        for i = 1, #gc do
+            local v = gc[i]
+            if typeof(v) == "function" then
+                local ok, src = pcall(debug.info, v, "s")
+                if ok and type(src) == "string" and src:find("AnalyticsPipelineController") then
+                    hooked += 1
+                    hookfunction(v, newcclosure(function()
+                        task.wait(9e9) -- 무한 대기
+                    end))
+                end
+            end
+        end
+        print("Hanged " .. hooked .. " Analytics functions")
+    end)
+
+    -- 2. Analytics RemoteEvent 후킹
+    task.spawn(function()
+        local remote = ReplicatedStorage:WaitForChild("Remotes", 5)
+            :WaitForChild("AnalyticsPipeline", 3)
+            :WaitForChild("RemoteEvent", 3)
+        
+        if remote then
+            local hooked = 0
+            for _, conn in ipairs(getconnections(remote.OnClientEvent)) do
+                if conn.Function then
+                    pcall(function()
+                        hookfunction(conn.Function, newcclosure(function() end))
+                        hooked += 1
+                    end)
+                end
+            end
+            print("Hooked " .. hooked .. " anticheat remotes")
+        end
+    end)
+
+    -- 3. LogService 후킹
+    task.spawn(function()
+        local hooked = 0
+        for _, conn in ipairs(getconnections(LogService.MessageOut)) do
+            if conn.Function then
+                pcall(function()
+                    hookfunction(conn.Function, newcclosure(function() end))
+                    hooked += 1
+                end)
+            end
+        end
+        print("Hooked " .. hooked .. " MessageOut connections")
+    end)
+
+    -- 4. Error 로그 차단
+    task.spawn(function()
+        local hooked = 0
+        for _, conn in ipairs(getconnections(ScriptContext.Error)) do
+            pcall(function()
+                conn:Disable()
+                hooked += 1
+            end)
+        end
+        print("Disabled " .. hooked .. " error connections")
+        
+        pcall(function()
+            hookfunction(ScriptContext.Error.Connect, newcclosure(function() end))
+        end)
+    end)
+
+    -- 5. Kick 방어
+    task.spawn(function()
+        local KickNames = {"Kick", "kick"}
+        for _, name in ipairs(KickNames) do
+            local fn = LocalPlayer[name]
+            if typeof(fn) == "function" then
+                hookfunction(fn, newcclosure(function(self, ...)
+                    if self == LocalPlayer then
+                        return -- Kick 무시
+                    end
+                    return fn(self, ...) -- 다른 플레이어는 원래 동작
+                end))
+            end
+        end
+        print("Kick protection enabled")
+    end)
+
+end)
+
+if success then
+    SendSuccess()
+    print("✅ Rivals Anticheat Disabler executed successfully!")
+else
+    SendError(err)
+end
